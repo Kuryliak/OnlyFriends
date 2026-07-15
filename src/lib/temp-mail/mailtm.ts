@@ -125,11 +125,52 @@ export async function getMessage(token: string, id: string): Promise<MailTmMessa
   return mailTmFetch<MailTmMessage>(`/messages/${id}`, { token });
 }
 
-const LINK_REGEX = /https?:\/\/[^\s<>"']+/gi;
+const LINK_REGEX = /https?:\/\/[^\s<>"'\]]+/gi;
+
+/** Decode HTML entities + quoted-printable soft breaks so verify tokens stay intact. */
+export function decodeEmailContent(content: string): string {
+  return content
+    .replace(/=\r?\n/g, "")
+    .replace(/=3D/gi, "=")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#0*38;/g, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#x2F;/gi, "/")
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n);
+      return Number.isFinite(code) ? String.fromCharCode(code) : _;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const code = parseInt(h, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : _;
+    });
+}
+
+function normalizeLink(raw: string): string {
+  let link = raw.trim();
+  // strip trailing punctuation / broken HTML leftovers
+  link = link.replace(/[),.]+$/g, "");
+  link = link.replace(/&amp;/gi, "&");
+  // common mail client wrap artifacts
+  link = link.replace(/\s+/g, "");
+  try {
+    // URL constructor normalizes encoding
+    const u = new URL(link);
+    return u.toString();
+  } catch {
+    return link;
+  }
+}
 
 export function extractLinks(content: string): string[] {
-  const matches = content.match(LINK_REGEX) ?? [];
-  return [...new Set(matches.map((link) => link.replace(/[),.]+$/, "")))];
+  const decoded = decodeEmailContent(content);
+  const fromHref = [...decoded.matchAll(/href\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]);
+  const bare = decoded.match(LINK_REGEX) ?? [];
+  const all = [...fromHref, ...bare].map(normalizeLink).filter((l) => /^https?:\/\//i.test(l));
+  return [...new Set(all)];
 }
 
 export function extractVerificationLinks(content: string): string[] {
@@ -138,32 +179,72 @@ export function extractVerificationLinks(content: string): string[] {
   );
 }
 
-export function extractXvideosVerificationLinks(content: string): string[] {
-  return extractLinks(content).filter(
-    (link) =>
-      /xvideos\.com/i.test(link) &&
-      /valid|verif|confirm|token|key|email/i.test(link)
-  );
+/** Higher score = more likely the real XVIDEOS email-validation URL. */
+export function scoreXvideosVerificationLink(link: string): number {
+  let score = 0;
+  const lower = link.toLowerCase();
+  if (lower.includes("xvideos.com")) score += 15;
+  if (/account\/email\/valid/i.test(link)) score += 80;
+  if (/\/validat/i.test(link)) score += 50;
+  if (/verif/i.test(link)) score += 40;
+  if (/[?&](token|key|hash|code|t|k)=/i.test(link)) score += 30;
+  if (/email/i.test(link)) score += 10;
+  if (/confirm/i.test(link)) score += 15;
+  if (/unsubscribe|privacy|support|help|cdn|static|img|avatar|favicon/i.test(lower)) score -= 120;
+  if (/xvideos\.com\/?(\?|$)/i.test(link)) score -= 25;
+  if (/xvideos\.com\/(tags|video|profiles|channels)/i.test(lower)) score -= 40;
+  return score;
 }
 
-export async function pollForXvideosVerificationLink(
+export function extractXvideosVerificationLinks(content: string): string[] {
+  const links = extractLinks(content)
+    .filter((link) => {
+      const s = scoreXvideosVerificationLink(link);
+      // keep any plausible verify URL, not only strict xvideos+keyword pairs
+      return s >= 25;
+    })
+    .sort((a, b) => scoreXvideosVerificationLink(b) - scoreXvideosVerificationLink(a));
+  return [...new Set(links)];
+}
+
+export async function pollForXvideosVerificationLinks(
   token: string,
   options?: { timeoutMs?: number; intervalMs?: number }
-): Promise<string | null> {
+): Promise<string[]> {
   const timeoutMs = options?.timeoutMs ?? 120_000;
   const intervalMs = options?.intervalMs ?? 5_000;
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
     const messages = await listMessages(token);
-    for (const message of messages) {
+    // newest first — Mail.tm usually returns newest at start, but sort by date
+    const ordered = [...messages].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    const collected: string[] = [];
+    for (const message of ordered) {
       const full = await getMessage(token, message.id);
-      const content = [full.subject, full.intro, full.text, ...full.html].filter(Boolean).join("\n");
-      const links = extractXvideosVerificationLinks(content);
-      if (links[0]) return links[0];
+      const htmlParts = Array.isArray(full.html) ? full.html : full.html ? [String(full.html)] : [];
+      const content = [full.subject, full.intro, full.text, ...htmlParts].filter(Boolean).join("\n");
+      collected.push(...extractXvideosVerificationLinks(content));
     }
+
+    const unique = [...new Set(collected)].sort(
+      (a, b) => scoreXvideosVerificationLink(b) - scoreXvideosVerificationLink(a)
+    );
+    if (unique.length > 0) return unique;
+
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  return null;
+  return [];
+}
+
+export async function pollForXvideosVerificationLink(
+  token: string,
+  options?: { timeoutMs?: number; intervalMs?: number }
+): Promise<string | null> {
+  const links = await pollForXvideosVerificationLinks(token, options);
+  return links[0] ?? null;
 }
