@@ -1,0 +1,16 @@
+node_modules
+.next
+.env
+*.db
+*.db-journal
+playwright/.auth
+screenshots
+uploads/avatars/*
+!uploads/avatars/.gitkeep
+logs/
+.mac-setup-done
+scripts/mac/AppIcon.iconset/
+scripts/mac/OnlyFriends-bin
+.DS_Store
+tsconfig.tsbuildinfo
+dist/.claude/

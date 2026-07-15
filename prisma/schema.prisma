@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  IDLE
+  ACTIVE
+  CAPTCHA
+  BANNED
+  ERROR
+}
+
+enum ProxyType {
+  HTTP
+  HTTPS
+  SOCKS5
+}
+
+enum JobType {
+  REGISTER
+  VERIFY_EMAIL
+  UPDATE_PROFILE
+  ADD_FRIENDS
+  SUBSCRIBE
+  SEND_MESSAGE
+  WARMUP_SCROLL
+  LOGIN
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED_CAPTCHA
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum OutreachBatchStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+  PAUSED_CAPTCHA
+}
+
+model Proxy {
+  id        String    @id @default(cuid())
+  name      String
+  host      String
+  port      Int
+  type      ProxyType @default(HTTP)
+  username  String?
+  password  String?
+  country   String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  accounts  Account[]
+}
+
+model AccountGroup {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#e85d4c")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  accounts    Account[]
+}
+
+model Account {
+  id          String        @id @default(cuid())
+  username    String        @unique
+  email         String?
+  emailPassword String?
+  emailVerified Boolean       @default(false)
+  password      String
+  displayName String?
+  sex         String        @default("Woman")
+  mutualFriendsCount      Int       @default(0)
+  friendRequestsSentCount Int       @default(0)
+  mutualFriendsJson       String?
+  friendRequestsSentJson  String?
+  friendStatsSyncedAt     DateTime?
+  profileSlug String?
+  bio         String?
+  avatarPath  String?
+  status      AccountStatus @default(IDLE)
+  lastActive  DateTime?
+  cookies     String?
+  userAgent   String?
+  groupId     String?
+  proxyId     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  group       AccountGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  proxy       Proxy?        @relation(fields: [proxyId], references: [id], onDelete: SetNull)
+  jobs           Job[]
+  friends        FriendAction[]
+  friendClaims   FriendTargetClaim[]
+  friendMessages FriendMessage[]
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model FriendMessage {
+  id           String   @id @default(cuid())
+  accountId    String
+  targetUser   String
+  message      String
+  status       String   @default("pending")
+  errorMessage String?
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, targetUser])
+}
+
+model FriendTargetClaim {
+  id         String   @id @default(cuid())
+  targetUser String   @unique
+  accountId  String
+  jobId      String?
+  status     String   @default("claimed")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model FriendAction {
+  id           String   @id @default(cuid())
+  accountId    String
+  targetUser   String
+  status       String   @default("pending")
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  type         JobType
+  status       JobStatus @default(PENDING)
+  accountId    String?
+  payload      String    @default("{}")
+  result       String?
+  errorMessage String?
+  progress     Int       @default(0)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  account      Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+}
+
+model OutreachBatch {
+  id           String              @id @default(cuid())
+  status       OutreachBatchStatus @default(RUNNING)
+  jobIdsJson   String              @default("[]")
+  targetCount  Int                 @default(0)
+  accountCount Int                 @default(0)
+  summaryJson  String?
+  createdAt    DateTime            @default(now())
+  completedAt  DateTime?
+  updatedAt    DateTime            @updatedAt
+}
