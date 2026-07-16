@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Cpu,
@@ -27,11 +27,25 @@ import { useI18n } from "@/lib/i18n/context";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
+  WORKER_SETTINGS_BOUNDS,
   WORKER_SETTINGS_PRESETS,
   type WorkerSettings,
   type WorkerSettingsField,
   type WorkerSettingsSources,
 } from "@/lib/settings/worker-settings-shared";
+import {
+  applyNumericDraft,
+  applyWarmupFieldUpdate,
+  pickFormFromServerPoll,
+  resolveWarmupFormForSave,
+  type WarmupFieldKey,
+  type WarmupFormLike,
+} from "@/lib/workers/form-sync";
+
+/** Worker settings draft: empty string while user clears a field. */
+type WorkerSettingsDraft = {
+  [K in WorkerSettingsField]: number | "";
+};
 
 type WorkerStatus = {
   settings: WorkerSettings;
@@ -80,13 +94,13 @@ const SETTING_FIELDS: Array<{
 export default function WorkersPage() {
   const { t, locale } = useI18n();
   const [status, setStatus] = useState<WorkerStatus | null>(null);
-  const [form, setForm] = useState<WorkerSettings | null>(null);
+  const [form, setForm] = useState<WorkerSettingsDraft | null>(null);
   const [sources, setSources] = useState<WorkerSettingsSources | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [warmupForm, setWarmupForm] = useState<AutoWarmupSettings | null>(null);
+  const [warmupForm, setWarmupForm] = useState<WarmupFormLike | null>(null);
   const [savingWarmup, setSavingWarmup] = useState(false);
   const [warmupSaved, setWarmupSaved] = useState(false);
   const [stealthForm, setStealthForm] = useState<StealthSettings | null>(null);
@@ -94,16 +108,36 @@ export default function WorkersPage() {
   const [stealthSaved, setStealthSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Dirty flags as refs so status polling never clobbers in-progress edits
+  // (load is stable and does not re-subscribe every keystroke).
+  const formDirtyRef = useRef(false);
+  const warmupDirtyRef = useRef(false);
+  const stealthDirtyRef = useRef(false);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/workers/status");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
       setStatus(json);
-      setForm(json.settings);
+      setForm((prev) =>
+        pickFormFromServerPoll(prev, json.settings as WorkerSettings, formDirtyRef.current)
+      );
       setSources(json.sources);
-      setWarmupForm(json.autoWarmup?.settings ?? null);
-      setStealthForm(json.stealth?.settings ?? null);
+      setWarmupForm((prev) =>
+        pickFormFromServerPoll(
+          prev,
+          (json.autoWarmup?.settings as AutoWarmupSettings | undefined) ?? null,
+          warmupDirtyRef.current
+        )
+      );
+      setStealthForm((prev) =>
+        pickFormFromServerPoll(
+          prev,
+          (json.stealth?.settings as StealthSettings | undefined) ?? null,
+          stealthDirtyRef.current
+        )
+      );
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -114,9 +148,20 @@ export default function WorkersPage() {
 
   useEffect(() => {
     void load();
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(() => {
+      void load();
+    }, 3000);
     return () => clearInterval(interval);
   }, [load]);
+
+  const resolveWorkerFormForSave = (draft: WorkerSettingsDraft): WorkerSettings => {
+    const out = {} as WorkerSettings;
+    for (const key of Object.keys(WORKER_SETTINGS_BOUNDS) as WorkerSettingsField[]) {
+      const value = draft[key];
+      out[key] = value === "" ? WORKER_SETTINGS_BOUNDS[key].default : value;
+    }
+    return out;
+  };
 
   const save = async () => {
     if (!form) return;
@@ -124,13 +169,15 @@ export default function WorkersPage() {
     setSaved(false);
     setError(null);
     try {
+      const payload = resolveWorkerFormForSave(form);
       const res = await fetch("/api/workers/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Save failed");
+      formDirtyRef.current = false;
       setForm(json.settings);
       setSources(json.sources);
       setSaved(true);
@@ -150,6 +197,7 @@ export default function WorkersPage() {
       const res = await fetch("/api/workers/settings", { method: "DELETE" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Reset failed");
+      formDirtyRef.current = false;
       setForm(json.settings);
       setSources(json.sources);
       setSaved(true);
@@ -174,6 +222,7 @@ export default function WorkersPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Save failed");
+      stealthDirtyRef.current = false;
       setStealthForm(json.settings);
       setStealthSaved(true);
       await load();
@@ -190,13 +239,15 @@ export default function WorkersPage() {
     setWarmupSaved(false);
     setError(null);
     try {
+      const payload = resolveWarmupFormForSave(warmupForm);
       const res = await fetch("/api/workers/auto-warmup", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(warmupForm),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Save failed");
+      warmupDirtyRef.current = false;
       setWarmupForm(json.settings);
       setWarmupSaved(true);
       await load();
@@ -207,28 +258,27 @@ export default function WorkersPage() {
     }
   };
 
-  const updateWarmupField = (key: keyof AutoWarmupSettings, raw: string | boolean) => {
+  const updateWarmupField = (key: WarmupFieldKey, raw: string | boolean) => {
     if (!warmupForm) return;
-    if (key === "enabled") {
-      setWarmupForm({ ...warmupForm, enabled: Boolean(raw) });
-    } else {
-      const parsed = Number.parseInt(String(raw), 10);
-      if (!Number.isFinite(parsed)) return;
-      setWarmupForm({ ...warmupForm, [key]: parsed });
-    }
+    const next = applyWarmupFieldUpdate(warmupForm, key, raw);
+    if (!next) return;
+    warmupDirtyRef.current = true;
+    setWarmupForm(next);
     setWarmupSaved(false);
   };
 
   const applyPreset = (values: WorkerSettings) => {
+    formDirtyRef.current = true;
     setForm(values);
     setSaved(false);
   };
 
   const updateField = (key: WorkerSettingsField, raw: string) => {
     if (!form) return;
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed)) return;
-    setForm({ ...form, [key]: parsed });
+    const next = applyNumericDraft(raw, form[key]);
+    if (next === null) return;
+    formDirtyRef.current = true;
+    setForm({ ...form, [key]: next });
     setSaved(false);
   };
 
@@ -389,6 +439,7 @@ export default function WorkersPage() {
               checked={stealthForm?.enabled ?? false}
               onChange={(e) => {
                 if (!stealthForm) return;
+                stealthDirtyRef.current = true;
                 setStealthForm({ ...stealthForm, enabled: e.target.checked });
                 setStealthSaved(false);
               }}
