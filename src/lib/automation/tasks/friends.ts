@@ -23,6 +23,8 @@ export type AddFriendsResult = {
   failed: { user: string; error: string }[];
   captcha?: boolean;
   cookies?: string;
+  /** True when XVIDEOS friend-request limit hit for this account. */
+  accountLimit?: boolean;
 };
 
 function normalizeSlug(target: string): string {
@@ -170,6 +172,7 @@ export async function addFriends(
   const added: string[] = [];
   const skipped: string[] = [];
   const failed: { user: string; error: string }[] = [];
+  let accountLimit = false;
 
   try {
     const auth = await ensureXvideosSession(page, account);
@@ -193,7 +196,7 @@ export async function addFriends(
       const targetUser = targetUsers[index];
       if ((await resolveCaptchaOrPause(page, account)) === "captcha") {
         const cookies = await saveCookies(context);
-        return { added, skipped, failed, captcha: true, cookies };
+        return { added, skipped, failed, captcha: true, cookies, accountLimit };
       }
 
       const slug = normalizeSlug(targetUser);
@@ -205,6 +208,7 @@ export async function addFriends(
         } else {
           failed.push({ user: slug, error: result.error });
           if (result.accountLimit) {
+            accountLimit = true;
             for (const remaining of targetUsers.slice(index + 1)) {
               const remainingSlug = normalizeSlug(remaining);
               failed.push({
@@ -226,7 +230,7 @@ export async function addFriends(
     }
 
     const cookies = mergeAccountCookies(baseCookies, await saveCookies(context));
-    return { added, skipped, failed, cookies };
+    return { added, skipped, failed, cookies, accountLimit };
   } catch (err) {
     return {
       added,
@@ -235,6 +239,7 @@ export async function addFriends(
         ...failed,
         { user: "*", error: err instanceof Error ? err.message : "Session failed" },
       ],
+      accountLimit,
     };
   } finally {
     await closeBrowser(session);

@@ -1,4 +1,8 @@
 import type { AccountStatus, JobStatus, JobType } from "@prisma/client";
+import {
+  formatCooldownRemaining,
+  isAccountInCooldown,
+} from "@/lib/accounts/cooldown";
 import { OUTREACH_JOB_TYPES } from "@/lib/jobs/worker-config";
 import { isStealthEnabledSync } from "@/lib/settings/stealth";
 
@@ -69,10 +73,26 @@ export function isOutreachJob(type: JobType): boolean {
   return OUTREACH_JOB_TYPES.has(type);
 }
 
+export type EligibilityOptions = {
+  /**
+   * When true (default for claim): treat temporary cooldown as ineligible so
+   * another account can take work. Job-guards must pass false so cooldown does
+   * not permanently CANCEL queued friend jobs.
+   */
+  respectCooldown?: boolean;
+};
+
 export function isAccountEligibleForJob(
-  account: { status: AccountStatus; cookies: string | null },
-  job: { type: JobType; status: JobStatus }
+  account: {
+    status: AccountStatus;
+    cookies: string | null;
+    cooldownUntil?: Date | null;
+  },
+  job: { type: JobType; status: JobStatus },
+  options?: EligibilityOptions
 ): string | null {
+  const respectCooldown = options?.respectCooldown !== false;
+
   if (account.status === "ERROR") {
     return "Аккаунт в статусе «Ошибка» — предыдущая задача не удалась. Нажмите «Исправить» на странице аккаунта или в задачах";
   }
@@ -87,6 +107,10 @@ export function isAccountEligibleForJob(
     }
     if (!account.cookies?.trim()) {
       return "Нет сохранённой сессии XVIDEOS — войдите заново";
+    }
+    if (respectCooldown && isAccountInCooldown(account.cooldownUntil)) {
+      const until = account.cooldownUntil!;
+      return `Аккаунт на паузе (лимит/сбои) ещё ${formatCooldownRemaining(until)} — цели пойдут на другие аккаунты`;
     }
   }
 

@@ -93,6 +93,8 @@ model Account {
   avatarPath  String?
   status      AccountStatus @default(IDLE)
   lastActive  DateTime?
+  /** Skip outreach until this time (friend limit / repeated fails). */
+  cooldownUntil DateTime?
   cookies     String?
   userAgent   String?
   groupId     String?

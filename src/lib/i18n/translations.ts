@@ -194,7 +194,13 @@ export const translations = {
     massSendingPreviewMore: "и ещё {count}…",
     massSendingNotEnough: "Найдено {found} из {requested} — продолжаем с тем, что есть",
     massSendingHint:
-      "Отправляет заявки в друзья и подписки. Уже добавленные пропускаются. Нужен запущенный worker.",
+      "По умолчанию только заявки в друзья (максимум трафика). Подписку можно включить опцией. Уже добавленные пропускаются. Нужен worker.",
+    massSendingFriendsOnly: "Только заявки в друзья (рекомендуется)",
+    massSendingFriendsOnlyHint:
+      "Без авто-подписки — слоты worker’а и hourly cap идут только на friends.",
+    massSendingAlsoSubscribe: "После друзей ещё и подписка",
+    massSendingAlsoSubscribeHint:
+      "Цепочка friends → subscribe. Медленнее, меньше friends/час.",
     channel: "Канал",
     listModes: {
       verifiedWomen: "Верифицированные женщины",
@@ -293,6 +299,17 @@ export const translations = {
     outreachTotal: "Всего",
     noOutreach: "Рассылок пока не было",
     openFullStats: "Полная статистика",
+    trafficTitle: "Трафик друзей",
+    trafficSubtitle: "Сколько заявок идёт и что тормозит флот",
+    trafficFriendsHour: "Friends / час",
+    trafficFriendsHourHint: "успешных за последние 60 мин",
+    trafficReady: "Готовы к рассылке",
+    trafficReadyHint: "ACTIVE + proxy + сессия, не на паузе",
+    trafficQueue: "Очередь ADD_FRIENDS",
+    trafficQueueHint: "pending {pending} · running {running}",
+    trafficBlockers: "Что тормозит",
+    trafficNoBlockers: "Блокеров нет — можно лить цели",
+    trafficGoSearch: "Запустить рассылку →",
   },
   statsGlobal: {
     title: "Глобальная статистика",

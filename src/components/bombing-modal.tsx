@@ -55,6 +55,8 @@ export function BombingModal({
   const [scanWidened, setScanWidened] = useState(false);
   const [massStarting, setMassStarting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  /** Default off: friends-only for max traffic. */
+  const [chainSubscribe, setChainSubscribe] = useState(false);
 
   const targetsCacheRef = useRef<string[]>([]);
   const cachedCountRef = useRef(0);
@@ -76,6 +78,7 @@ export function BombingModal({
     setMassUserCountInput(initialCount);
     setDebouncedCountInput(initialCount);
     setLocalError(null);
+    setChainSubscribe(false);
   }, [open, accounts, initialAccountIds, selectedProfiles.length]);
 
   const parseMassUserCount = (raw = massUserCountInput, fallback = 1): number => {
@@ -218,7 +221,7 @@ export function BombingModal({
         );
       }
 
-      const friendsData = await queueBombingJobs(ids, targets);
+      const friendsData = await queueBombingJobs(ids, targets, { chainSubscribe });
       onClose();
       onComplete?.();
       notifyQueued(friendsData, ids, targets.length);
@@ -293,6 +296,34 @@ export function BombingModal({
       <p className="text-sm text-text-secondary -mt-2 mb-5">{t("search.massSendingIntro")}</p>
 
       <div className="space-y-5">
+        <section className="rounded-xl border border-accent/25 bg-accent/5 p-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-border accent-accent"
+              checked={!chainSubscribe}
+              onChange={(e) => setChainSubscribe(!e.target.checked)}
+            />
+            <span>
+              <span className="text-sm font-semibold block">{t("search.massSendingFriendsOnly")}</span>
+              <span className="text-[11px] text-text-muted">{t("search.massSendingFriendsOnlyHint")}</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border-subtle">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-border accent-accent"
+              checked={chainSubscribe}
+              onChange={(e) => setChainSubscribe(e.target.checked)}
+            />
+            <span>
+              <span className="text-sm font-medium block">{t("search.massSendingAlsoSubscribe")}</span>
+              <span className="text-[11px] text-text-muted">{t("search.massSendingAlsoSubscribeHint")}</span>
+            </span>
+          </label>
+          <p className="text-[11px] text-text-muted mt-3">{t("search.massSendingHint")}</p>
+        </section>
+
         <section className="rounded-xl border border-border bg-surface-overlay/30 p-4">
           <div className="flex items-center gap-2 mb-3">
             <Target size={16} className="text-accent" />

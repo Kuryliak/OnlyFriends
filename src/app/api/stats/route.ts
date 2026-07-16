@@ -7,6 +7,7 @@ import {
   since24h,
   sumOutreachJobField,
 } from "@/lib/stats/dashboard";
+import { getTrafficSnapshot } from "@/lib/stats/traffic";
 
 export async function GET() {
   const since = since24h();
@@ -32,6 +33,7 @@ export async function GET() {
     subscribesFailed24h,
     uniqueTargets24h,
     outreachOnProxy24h,
+    traffic,
   ] = await Promise.all([
     prisma.account.count(),
     prisma.proxy.count({ where: { isActive: true } }),
@@ -55,6 +57,7 @@ export async function GET() {
     countFriendActions24h(since, { status: "failed", friendsOnly: false }),
     countNewTargets24h(since),
     countOutreachAccountsOnProxy24h(since),
+    getTrafficSnapshot(),
   ]);
 
   const recentJobs = await prisma.job.findMany({
@@ -125,6 +128,7 @@ export async function GET() {
       friendsSkipped: friendsSkippedAll,
       topAccounts,
     },
+    traffic,
     recentJobs,
   });
 }

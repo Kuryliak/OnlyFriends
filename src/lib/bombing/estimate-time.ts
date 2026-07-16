@@ -22,23 +22,30 @@ export function estimateOutreachDuration(options: {
   targetCount: number;
   accountCount: number;
   outreachConcurrency?: number;
+  /** When false (default), only ADD_FRIENDS counts — faster friends traffic. */
+  chainSubscribe?: boolean;
 }): OutreachDurationEstimate {
-  const { targetCount, accountCount, outreachConcurrency = DEFAULT_OUTREACH_CONCURRENCY } =
-    options;
+  const {
+    targetCount,
+    accountCount,
+    outreachConcurrency = DEFAULT_OUTREACH_CONCURRENCY,
+    chainSubscribe = false,
+  } = options;
 
   if (targetCount <= 0 || accountCount <= 0) {
     return { seconds: 0, minSeconds: 0, maxSeconds: 0, targetsPerAccount: 0 };
   }
 
   const targetsPerAccount = Math.ceil(targetCount / accountCount);
-  const actionsPerTarget = 2; // ADD_FRIENDS + SUBSCRIBE per person
+  const actionsPerTarget = chainSubscribe ? 2 : 1;
+  const jobOverhead = chainSubscribe ? JOB_OVERHEAD_SECONDS : Math.round(JOB_OVERHEAD_SECONDS * 0.55);
 
   const accountMin =
-    targetsPerAccount * SECONDS_PER_TARGET.min * actionsPerTarget + JOB_OVERHEAD_SECONDS;
+    targetsPerAccount * SECONDS_PER_TARGET.min * actionsPerTarget + jobOverhead;
   const accountAvg =
-    targetsPerAccount * SECONDS_PER_TARGET.avg * actionsPerTarget + JOB_OVERHEAD_SECONDS;
+    targetsPerAccount * SECONDS_PER_TARGET.avg * actionsPerTarget + jobOverhead;
   const accountMax =
-    targetsPerAccount * SECONDS_PER_TARGET.max * actionsPerTarget + JOB_OVERHEAD_SECONDS;
+    targetsPerAccount * SECONDS_PER_TARGET.max * actionsPerTarget + jobOverhead;
 
   const parallel = Math.max(1, Math.min(accountCount, outreachConcurrency));
   const waves = Math.ceil(accountCount / parallel);

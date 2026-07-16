@@ -7,6 +7,12 @@ export async function queueIdleWarmupJobs(availableSlots: number): Promise<numbe
 
   if (!config.enabled || availableSlots <= 0) return 0;
 
+  // Never steal slots while friend jobs are waiting — traffic first
+  const pendingFriends = await prisma.job.count({
+    where: { type: "ADD_FRIENDS", status: "PENDING" },
+  });
+  if (pendingFriends > 0) return 0;
+
   const maxQueue = Math.min(config.maxPerCycle, availableSlots);
   const intervalSince = new Date(Date.now() - config.intervalMinutes * 60 * 1000);
 

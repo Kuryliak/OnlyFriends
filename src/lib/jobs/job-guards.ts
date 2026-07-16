@@ -6,7 +6,9 @@ export async function cancelIneligiblePendingJobs(): Promise<number> {
   const pending = await prisma.job.findMany({
     where: { status: "PENDING" },
     include: {
-      account: { select: { id: true, status: true, cookies: true } },
+      account: {
+        select: { id: true, status: true, cookies: true, cooldownUntil: true },
+      },
     },
     take: 200,
   });
@@ -14,7 +16,8 @@ export async function cancelIneligiblePendingJobs(): Promise<number> {
   let cancelled = 0;
   for (const job of pending) {
     if (!job.account) continue;
-    const reason = isAccountEligibleForJob(job.account, job);
+    // Do not cancel jobs only because of temporary cooldown — claim skips them until then
+    const reason = isAccountEligibleForJob(job.account, job, { respectCooldown: false });
     if (!reason) continue;
 
     await prisma.job.update({

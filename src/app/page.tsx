@@ -155,6 +155,16 @@ interface Stats {
       total: number;
     }>;
   };
+  traffic?: {
+    friendsLastHour: number;
+    friendsLast24h: number;
+    friendsPerHour: number;
+    pendingFriendJobs: number;
+    runningFriendJobs: number;
+    activeAccounts: number;
+    readyForOutreach: number;
+    blockers: Array<{ key: string; label: string; count: number; href: string }>;
+  };
   recentJobs: Array<{
     id: string;
     type: string;
@@ -280,6 +290,77 @@ export default function DashboardPage() {
           description={t("jobs.captchaHelp")}
           action={t("dashboard.captchaAlertAction")}
         />
+      ) : null}
+
+      {stats?.traffic ? (
+        <Card className="p-5 mb-6 border-accent/25 bg-gradient-to-br from-accent/5 to-transparent">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                <UserPlus size={18} className="text-accent" />
+                {t("dashboard.trafficTitle")}
+              </h2>
+              <p className="text-xs text-text-muted mt-1">{t("dashboard.trafficSubtitle")}</p>
+            </div>
+            <Link href="/search">
+              <Button size="sm" variant="secondary">
+                {t("dashboard.trafficGoSearch")}
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <div>
+              <p className="font-display text-3xl font-semibold tabular-nums text-accent">
+                {stats.traffic.friendsPerHour}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">{t("dashboard.trafficFriendsHour")}</p>
+              <p className="text-[11px] text-text-muted/80">{t("dashboard.trafficFriendsHourHint")}</p>
+            </div>
+            <div>
+              <p className="font-display text-2xl font-semibold tabular-nums">
+                {stats.traffic.readyForOutreach}
+                <span className="text-sm text-text-muted font-normal">
+                  {" "}
+                  / {stats.traffic.activeAccounts}
+                </span>
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">{t("dashboard.trafficReady")}</p>
+              <p className="text-[11px] text-text-muted/80">{t("dashboard.trafficReadyHint")}</p>
+            </div>
+            <div className="col-span-2 lg:col-span-1">
+              <p className="font-display text-2xl font-semibold tabular-nums">
+                {stats.traffic.pendingFriendJobs + stats.traffic.runningFriendJobs}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">{t("dashboard.trafficQueue")}</p>
+              <p className="text-[11px] text-text-muted/80">
+                {t("dashboard.trafficQueueHint", {
+                  pending: stats.traffic.pendingFriendJobs,
+                  running: stats.traffic.runningFriendJobs,
+                })}
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-border-subtle pt-3">
+            <p className="text-xs font-medium text-text-muted mb-2">{t("dashboard.trafficBlockers")}</p>
+            {stats.traffic.blockers.filter((b) => b.key !== "queue").length === 0 ? (
+              <p className="text-xs text-status-success">{t("dashboard.trafficNoBlockers")}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {stats.traffic.blockers
+                  .filter((b) => b.key !== "queue")
+                  .map((b) => (
+                    <Link
+                      key={b.key}
+                      href={b.href}
+                      className="text-xs px-2.5 py-1 rounded-full border border-status-warning/40 bg-status-warning/10 text-status-warning hover:border-status-warning/70 transition-colors"
+                    >
+                      {b.label}: {b.count}
+                    </Link>
+                  ))}
+              </div>
+            )}
+          </div>
+        </Card>
       ) : null}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

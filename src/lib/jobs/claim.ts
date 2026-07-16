@@ -9,6 +9,7 @@ type JobCandidate = Job & {
     proxyId: string | null;
     status: AccountStatus;
     cookies: string | null;
+    cooldownUntil: Date | null;
   } | null;
 };
 
@@ -49,6 +50,14 @@ export function buildRunningSnapshot(
     proxyCounts,
     outreachRunning,
   };
+}
+
+/** Lower number = higher priority. Friends traffic first. */
+export function jobClaimPriority(type: JobType): number {
+  if (type === "ADD_FRIENDS") return 0;
+  if (type === "SUBSCRIBE" || type === "SEND_MESSAGE") return 1;
+  if (type === "WARMUP_SCROLL") return 3;
+  return 2;
 }
 
 export function canClaimJob(job: JobCandidate, state: RunningSnapshot): boolean {
@@ -115,20 +124,22 @@ export async function pickNextClaimableJob(
     orderBy: { createdAt: "asc" },
     take: 100,
     include: {
-      account: { select: { id: true, proxyId: true, status: true, cookies: true } },
+      account: {
+        select: {
+          id: true,
+          proxyId: true,
+          status: true,
+          cookies: true,
+          cooldownUntil: true,
+        },
+      },
     },
   });
 
   if (!pending.length) return null;
 
-  const jobPriority = (type: JobType): number => {
-    if (OUTREACH_JOB_TYPES.has(type)) return 0;
-    if (type === "WARMUP_SCROLL") return 2;
-    return 1;
-  };
-
   const byPriority = [...pending].sort((a, b) => {
-    const diff = jobPriority(a.type) - jobPriority(b.type);
+    const diff = jobClaimPriority(a.type) - jobClaimPriority(b.type);
     if (diff !== 0) return diff;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });

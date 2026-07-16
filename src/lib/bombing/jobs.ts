@@ -33,7 +33,17 @@ export async function postBombingJob(
   return data;
 }
 
-/** Friends first; subscribe is queued automatically after each friends job completes. */
-export async function queueBombingJobs(ids: string[], targets: string[]) {
-  return postBombingJob("ADD_FRIENDS", ids, targets, { chainSubscribe: true });
+export type QueueBombingOptions = {
+  /** When true, SUBSCRIBE is chained after successful ADD_FRIENDS. Default: false (friends-only traffic). */
+  chainSubscribe?: boolean;
+};
+
+/** Queue ADD_FRIENDS. By default friends-only — no auto-subscribe (max friend throughput). */
+export async function queueBombingJobs(
+  ids: string[],
+  targets: string[],
+  options?: QueueBombingOptions
+) {
+  const chainSubscribe = options?.chainSubscribe === true;
+  return postBombingJob("ADD_FRIENDS", ids, targets, { chainSubscribe });
 }

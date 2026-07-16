@@ -1,0 +1,80 @@
+OnlyFriends — перенос на другой компьютер
+========================================
+
+Что внутри (после git pull / распаковки архива)
+----------------------------------------------
+• Friends-only рассылка (подписка опционально)
+• Приоритет ADD_FRIENDS, warmup не мешает
+• Дашборд «Трафик друзей»
+• Cooldown при лимите friends
+• Нет proxy → job FAIL, аккаунт НЕ уходит в ERROR
+• Исправления workers (автопрогрев форма)
+
+Вариант A — с GitHub (рекомендуется для кода)
+---------------------------------------------
+На новом Mac:
+
+  1) Установи Node.js 20+  →  https://nodejs.org/
+  2) git clone https://github.com/Kuryliak/OnlyFriends.git
+     cd OnlyFriends
+  3) cp .env.example .env
+     (или скопируй свой .env со старого компа — USB/AirDrop)
+  4) npm install
+  5) npx playwright install chromium
+  6) npx prisma db push
+  7) Если нужны СТАРЫЕ аккаунты — скопируй файл:
+       prisma/dev.db
+     со старого компа (замени новый пустой).
+  8) Запуск:
+       двойной клик  ▶ СТАРТ.command
+     или:
+       npm run worker
+       npm run dev
+     Панель: http://localhost:3000
+
+Вариант B — архив OnlyFriends-portable (код + БД)
+-------------------------------------------------
+1) Распакуй НЕ в iCloud (Рабочий стол / ~/Projects)
+2) xattr -cr "/путь/к/OnlyFriends"   # если macOS ругается
+3) Двойной клик ▶ СТАРТ.command
+   (сам поставит npm + Chromium при первом запуске)
+4) Если .env не было в архиве:
+   cp .env.example .env
+
+Прокси (то, что будешь пробовать)
+---------------------------------
+1) Открой http://localhost:3000 → «Прокси»
+2) Добавь HTTP/SOCKS5: host, port, login, password, country
+3) «Тест» — должен показать IP
+4) Аккаунты → каждому свой proxy (1 sticky ≈ 1 акк)
+5) Воркеры: при тесте без mobile можно stealth off;
+   для outreach proxy всё равно нужен (REQUIRE_PROXY)
+6) Рассылка → «Только заявки в друзья»
+
+Что НЕ копировать руками
+------------------------
+• node_modules/   — ставятся через npm install
+• .next/          — соберётся само
+• логи logs/
+
+Что скопировать, если нужны аккаунты
+------------------------------------
+• prisma/dev.db   (+ dev.db-journal если есть)
+• .env            (настройки worker / stealth)
+• uploads/avatars/ (если важны аватары)
+
+Чеклист «поехало»
+-----------------
+[ ] Node 20+
+[ ] npm install ок
+[ ] playwright chromium ок
+[ ] prisma db push / dev.db на месте
+[ ] worker online (страница Воркеры)
+[ ] http://localhost:3000 открывается
+[ ] прокси добавлен + тест OK
+[ ] proxy привязан к аккам
+[ ] friends-only рассылка
+
+Остановка
+---------
+Остановить OnlyFriends.command  или Ctrl+C в терминале

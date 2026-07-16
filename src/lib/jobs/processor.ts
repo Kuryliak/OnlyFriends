@@ -14,7 +14,7 @@ import {
 } from "@/lib/friends/claims";
 import { subscribeToProfiles } from "@/lib/automation/tasks/subscribe";
 import { warmupScroll } from "@/lib/automation/tasks/warmup";
-import { isBanMessage } from "@/lib/automation/ban";
+import { accountStatusAfterJobFailure } from "@/lib/jobs/job-failure-account-status";
 import { resolveAccountProfileSlug } from "@/lib/automation/resolve-profile-slug";
 import { syncAccountFriendStats } from "@/lib/accounts/sync-friend-stats";
 import { sendChatMessage } from "@/lib/automation/tasks/message";
@@ -31,6 +31,7 @@ import {
 } from "@/lib/outreach/chain-subscribe";
 import { touchOutreachBatchForJob } from "@/lib/outreach/batch";
 import { getWorkerConfig } from "@/lib/jobs/worker-config";
+import { applyFriendsResultCooldown } from "@/lib/accounts/cooldown";
 
 async function getAccountWithProxy(accountId: string) {
   return prisma.account.findUnique({
@@ -419,11 +420,22 @@ export async function processJob(jobId: string): Promise<void> {
             },
           });
           try {
+            await applyFriendsResultCooldown(account.id, {
+              added: result.added,
+              skipped: result.skipped,
+              failed: result.failed,
+              accountLimit: result.accountLimit,
+            });
+          } catch {
+            // Non-fatal
+          }
+          try {
             await syncAccountFriendStats(account.id);
           } catch {
             // Non-fatal; stats refresh on next profile view.
           }
 
+          // Opt-in only — default is friends-only for max traffic
           if (payload.chainSubscribe === true) {
             const subscribeTargets = targetsForChainedSubscribe({
               added: result.added,
@@ -583,11 +595,16 @@ export async function processJob(jobId: string): Promise<void> {
         completedAt: new Date(),
       },
     });
+    // Config issues (missing proxy, inactive proxy) fail the job only —
+    // do not paint the account ERROR when the session is still fine.
     if (job.accountId) {
-      await prisma.account.update({
-        where: { id: job.accountId },
-        data: { status: isBanMessage(message) ? "BANNED" : "ERROR" },
-      });
+      const nextStatus = accountStatusAfterJobFailure(err, message);
+      if (nextStatus) {
+        await prisma.account.update({
+          where: { id: job.accountId },
+          data: { status: nextStatus },
+        });
+      }
     }
   } finally {
     await touchOutreachBatchForJob(jobId);
